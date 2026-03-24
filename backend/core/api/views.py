@@ -11,6 +11,7 @@ from .serializers import (
     BorrowRequestSerializer,
     ForgotPasswordSerializer,
     LoginSerializer,
+    ResetPasswordSerializer,
     RatingSerializer,
     RegisterSerializer,
     ResourceSerializer,
@@ -76,6 +77,23 @@ class BorrowRequestViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(borrow_request)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=["post"], url_path="reject")
+    def reject(self, request, pk=None):
+        borrow_request = self.queryset.select_related("resource", "requester").filter(pk=pk).first()
+        if borrow_request is None:
+            return Response({"detail": "Borrow request not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if borrow_request.resource.owner_id != request.user.id:
+            return Response({"detail": "You can only reject requests for your own resources."}, status=status.HTTP_403_FORBIDDEN)
+
+        if borrow_request.status != "pending":
+            return Response({"detail": "Only pending requests can be rejected."}, status=status.HTTP_400_BAD_REQUEST)
+
+        borrow_request.status = "rejected"
+        borrow_request.save(update_fields=["status"])
+        serializer = self.get_serializer(borrow_request)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class RatingViewSet(viewsets.ModelViewSet):
     queryset = Rating.objects.all()
@@ -121,6 +139,18 @@ def current_user_view(request):
 @permission_classes([permissions.AllowAny])
 def forgot_password_view(request):
     serializer = ForgotPasswordSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(
+        {"detail": "If an account exists for that email, a reset link has been sent."},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def reset_password_view(request):
+    serializer = ResetPasswordSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     serializer.save()
     return Response(

@@ -9,6 +9,7 @@ function AuthPage({ mode, title, helperText, buttonText, onSubmit }) {
     confirmPassword: ''
   });
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -18,11 +19,14 @@ function AuthPage({ mode, title, helperText, buttonText, onSubmit }) {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
+    setIsSubmitting(true);
     const result = await onSubmit(formData);
     if (!result.ok) {
       setError(result.message);
+      setIsSubmitting(false);
       return;
     }
+    setIsSubmitting(false);
     navigate('/profile');
   };
 
@@ -71,8 +75,8 @@ function AuthPage({ mode, title, helperText, buttonText, onSubmit }) {
           </label>
         )}
         {error && <p className="auth-error">{error}</p>}
-        <button className="btn btn-primary" type="submit">
-          {buttonText}
+        <button className="btn btn-primary" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? 'Please wait...' : buttonText}
         </button>
         <div className="auth-divider">
           <span>or</span>

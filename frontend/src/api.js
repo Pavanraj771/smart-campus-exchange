@@ -15,6 +15,41 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+let refreshPromise = null;
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+
+    if (error.response?.status !== 401 || !refreshToken || originalRequest?._retry) {
+      return Promise.reject(error);
+    }
+
+    originalRequest._retry = true;
+
+    try {
+      refreshPromise =
+        refreshPromise ||
+        axios.post('/api/auth/token/refresh/', {
+          refresh: refreshToken
+        });
+
+      const response = await refreshPromise;
+      localStorage.setItem(ACCESS_TOKEN_KEY, response.data.access);
+      refreshPromise = null;
+      originalRequest.headers.Authorization = `Bearer ${response.data.access}`;
+      return api(originalRequest);
+    } catch (refreshError) {
+      refreshPromise = null;
+      localStorage.removeItem(ACCESS_TOKEN_KEY);
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
+      return Promise.reject(refreshError);
+    }
+  }
+);
+
 function toDisplayName(text) {
   return (
     text
@@ -89,6 +124,11 @@ export async function forgotPassword(payload) {
   return response.data;
 }
 
+export async function resetPassword(payload) {
+  const response = await api.post('/auth/reset-password/', payload);
+  return response.data;
+}
+
 export async function fetchCurrentUser() {
   const response = await api.get('/auth/me/');
   return response.data;
@@ -101,6 +141,11 @@ export async function fetchResources() {
 
 export async function createResource(payload) {
   const response = await api.post('/resources/', payload);
+  return response.data;
+}
+
+export async function updateResource(resourceId, payload) {
+  const response = await api.patch(`/resources/${resourceId}/`, payload);
   return response.data;
 }
 
@@ -125,6 +170,11 @@ export async function fetchIncomingBorrowRequests() {
 
 export async function acceptBorrowRequest(requestId) {
   const response = await api.post(`/borrow/${requestId}/accept/`);
+  return response.data;
+}
+
+export async function rejectBorrowRequest(requestId) {
+  const response = await api.post(`/borrow/${requestId}/reject/`);
   return response.data;
 }
 

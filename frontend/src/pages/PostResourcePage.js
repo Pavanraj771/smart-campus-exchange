@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const initialFormData = {
@@ -11,11 +12,24 @@ const initialFormData = {
   description: ''
 };
 
-function PostResourcePage({ currentUser, onSubmit }) {
+function PostResourcePage({
+  currentUser,
+  onSubmit,
+  initialData = null,
+  title = 'Post a New Resource',
+  helperText = 'Add item details so other students can discover and request it.',
+  buttonText = 'Submit Resource',
+  successMessage = 'Resource saved successfully. Redirecting to the marketplace...'
+}) {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState(initialFormData);
+  const [formData, setFormData] = useState(initialData || initialFormData);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    setFormData(initialData || initialFormData);
+  }, [initialData]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -26,15 +40,17 @@ function PostResourcePage({ currentUser, onSubmit }) {
     event.preventDefault();
     setError('');
     setSuccess('');
+    setIsSubmitting(true);
 
     const result = await onSubmit(formData);
     if (!result.ok) {
       setError(result.message);
+      setIsSubmitting(false);
       return;
     }
 
     setFormData(initialFormData);
-    setSuccess('Resource posted successfully. Redirecting to the marketplace...');
+    setSuccess(successMessage);
     window.setTimeout(() => {
       navigate('/resources');
     }, 900);
@@ -43,9 +59,9 @@ function PostResourcePage({ currentUser, onSubmit }) {
   return (
     <section className="post-resource-wrap">
       <div className="section-head">
-        <h2>Post a New Resource</h2>
+        <h2>{title}</h2>
         <p>
-          Add item details so other students can discover and request it.
+          {helperText}
           {` Posting as ${currentUser.email}.`}
         </p>
       </div>
@@ -120,8 +136,8 @@ function PostResourcePage({ currentUser, onSubmit }) {
         </label>
         {error && <p className="form-feedback form-error span-2">{error}</p>}
         {success && <p className="form-feedback form-success span-2">{success}</p>}
-        <button className="btn btn-primary form-submit-btn" type="submit">
-          Submit Resource
+        <button className="btn btn-primary form-submit-btn" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? 'Saving...' : buttonText}
         </button>
       </form>
     </section>

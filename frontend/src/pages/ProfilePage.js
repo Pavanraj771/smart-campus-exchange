@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 function formatActivityDate(value) {
   if (!value) {
     return 'Recently';
@@ -26,22 +28,26 @@ function ProfilePage({ currentUser, resources, borrowRequests, incomingRequests 
     ...myResources.map((resource) => ({
       id: `resource-${resource.id}`,
       date: resource.createdAt,
-      text: `Posted resource: ${resource.title}`
+      text: `Posted resource: ${resource.title}`,
+      to: `/resources/${resource.id}`
     })),
     ...pendingOutgoingRequests.map((request) => ({
       id: `borrow-pending-${request.id}`,
       date: request.createdAt,
-      text: `Sent borrow request for ${request.item}`
+      text: `Sent borrow request for ${request.item}`,
+      to: '/requests'
     })),
     ...myBorrowedItems.map((request) => ({
       id: `borrow-approved-${request.id}`,
       date: request.createdAt,
-      text: `Borrow request approved for ${request.item}`
+      text: `Borrow request approved for ${request.item}`,
+      to: '/requests'
     })),
     ...approvedIncomingRequests.map((request) => ({
       id: `incoming-approved-${request.id}`,
       date: request.createdAt,
-      text: `Accepted request from ${request.requester} for ${request.item}`
+      text: `Accepted request from ${request.requester} for ${request.item}`,
+      to: '/incoming-requests'
     }))
   ]
     .sort((left, right) => new Date(right.date || 0) - new Date(left.date || 0))
@@ -63,7 +69,10 @@ function ProfilePage({ currentUser, resources, borrowRequests, incomingRequests 
           <ul className="detail-list">
             {recentActivity.map((activity) => (
               <li key={activity.id}>
-                {activity.text} - <span className="meta">{formatActivityDate(activity.date)}</span>
+                <Link className="activity-link" to={activity.to}>
+                  {activity.text}
+                </Link>{' '}
+                - <span className="meta">{formatActivityDate(activity.date)}</span>
               </li>
             ))}
           </ul>

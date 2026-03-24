@@ -18,17 +18,22 @@ import {
   normalizeResource,
   normalizeUser,
   persistTokens,
-  registerUser
+  rejectBorrowRequest,
+  registerUser,
+  resetPassword,
+  updateResource
 } from './api';
 import AppShell from './components/AppShell';
 import AuthPage from './pages/AuthPage';
 import DashboardPage from './pages/DashboardPage';
+import EditResourcePage from './pages/EditResourcePage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import HomePage from './pages/HomePage';
 import IncomingRequestsPage from './pages/IncomingRequestsPage';
 import NotFoundPage from './pages/NotFoundPage';
 import PostResourcePage from './pages/PostResourcePage';
 import ProfilePage from './pages/ProfilePage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import RequestsPage from './pages/RequestsPage';
 import ResourceDetailPage from './pages/ResourceDetailPage';
 import ResourcesPage from './pages/ResourcesPage';
@@ -71,8 +76,10 @@ function App() {
   const [incomingRequests, setIncomingRequests] = useState([]);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [acceptingRequest, setAcceptingRequest] = useState(null);
+  const [requestActionState, setRequestActionState] = useState({ id: null, type: null });
   const [authResolved, setAuthResolved] = useState(false);
   const [resourcesLoaded, setResourcesLoaded] = useState(false);
+  const [resourcesError, setResourcesError] = useState('');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -87,10 +94,12 @@ function App() {
         const resourceData = await fetchResources();
         if (isMounted) {
           setResources(resourceData.map(normalizeResource));
+          setResourcesError('');
         }
-      } catch {
+      } catch (error) {
         if (isMounted) {
           setResources([]);
+          setResourcesError(getApiErrorMessage(error, 'Unable to load resources right now.'));
         }
       } finally {
         if (isMounted) {
@@ -218,10 +227,20 @@ function App() {
     }
   };
 
-  const handleForgotPassword = async ({ email, newPassword, confirmPassword }) => {
+  const handleForgotPassword = async ({ email }) => {
     try {
-      const data = await forgotPassword({
-        email,
+      const data = await forgotPassword({ email });
+      return { ok: true, message: data.detail };
+    } catch (error) {
+      return { ok: false, message: getApiErrorMessage(error, 'Unable to reset password right now.') };
+    }
+  };
+
+  const handleResetPassword = async ({ uid, token, newPassword, confirmPassword }) => {
+    try {
+      const data = await resetPassword({
+        uid,
+        token,
         new_password: newPassword,
         confirm_password: confirmPassword
       });
@@ -274,6 +293,26 @@ function App() {
     }
   };
 
+  const handleUpdateResource = async (resourceId, resourceData) => {
+    try {
+      const updatedResource = await updateResource(resourceId, {
+        title: resourceData.title.trim(),
+        category: resourceData.category,
+        condition: resourceData.condition,
+        department: resourceData.department.trim(),
+        location: resourceData.location.trim(),
+        image: resourceData.imageUrl.trim(),
+        description: resourceData.description.trim()
+      });
+
+      const normalizedResource = normalizeResource(updatedResource);
+      setResources((prev) => prev.map((resource) => (resource.id === normalizedResource.id ? normalizedResource : resource)));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: getApiErrorMessage(error, 'Unable to update this resource right now.') };
+    }
+  };
+
   const handleAcceptIncomingRequest = (request) => {
     setAcceptingRequest(request);
   };
@@ -284,6 +323,7 @@ function App() {
     }
 
     try {
+      setRequestActionState({ id: acceptingRequest.id, type: 'accept' });
       const acceptedRequest = normalizeBorrowRequest(await acceptBorrowRequest(acceptingRequest.rawId));
       setIncomingRequests((prev) =>
         prev.map((request) => {
@@ -304,7 +344,20 @@ function App() {
         )
       );
     } finally {
+      setRequestActionState({ id: null, type: null });
       setAcceptingRequest(null);
+    }
+  };
+
+  const handleRejectIncomingRequest = async (request) => {
+    try {
+      setRequestActionState({ id: request.id, type: 'reject' });
+      const rejectedRequest = normalizeBorrowRequest(await rejectBorrowRequest(request.rawId));
+      setIncomingRequests((prev) =>
+        prev.map((entry) => (entry.rawId === rejectedRequest.rawId ? { ...entry, status: 'Rejected' } : entry))
+      );
+    } finally {
+      setRequestActionState({ id: null, type: null });
     }
   };
 
@@ -349,7 +402,13 @@ function App() {
                 path="/incoming-requests"
                 element={
                   currentUser ? (
-                    <IncomingRequestsPage requests={incomingRequests} onAcceptRequest={handleAcceptIncomingRequest} />
+                    <IncomingRequestsPage
+                      requests={incomingRequests}
+                      onAcceptRequest={handleAcceptIncomingRequest}
+                      onRejectRequest={handleRejectIncomingRequest}
+                      activeRequestId={requestActionState.id}
+                      activeAction={requestActionState.type}
+                    />
                   ) : (
                     <Navigate to="/login" replace />
                   )
@@ -360,6 +419,16 @@ function App() {
                 element={
                   currentUser ? (
                     <PostResourcePage currentUser={currentUser} onSubmit={handleCreateResource} />
+                  ) : (
+                    <Navigate to="/login" replace />
+                  )
+                }
+              />
+              <Route
+                path="/resources/:id/edit"
+                element={
+                  currentUser ? (
+                    <EditResourcePage currentUser={currentUser} resources={resources} onSubmit={handleUpdateResource} />
                   ) : (
                     <Navigate to="/login" replace />
                   )
@@ -422,6 +491,16 @@ function App() {
                   )
                 }
               />
+              <Route
+                path="/reset-password"
+                element={
+                  currentUser ? (
+                    <Navigate to="/profile" replace />
+                  ) : (
+                    <ResetPasswordPage onSubmit={handleResetPassword} />
+                  )
+                }
+              />
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
           ) : (
@@ -430,6 +509,12 @@ function App() {
               <p>Fetching your session and live resources.</p>
             </section>
           )}
+          {appReady && resourcesError ? (
+            <section className="empty-state">
+              <h2>Resource feed unavailable</h2>
+              <p>{resourcesError}</p>
+            </section>
+          ) : null}
         </AppShell>
         {isLogoutModalOpen ? (
           <div className="modal-backdrop" role="presentation" onClick={cancelLogout}>

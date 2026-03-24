@@ -1,4 +1,4 @@
-function IncomingRequestsPage({ requests, onAcceptRequest }) {
+function IncomingRequestsPage({ requests, onAcceptRequest, onRejectRequest, activeRequestId, activeAction }) {
   return (
     <section>
       <div className="section-head">
@@ -40,9 +40,24 @@ function IncomingRequestsPage({ requests, onAcceptRequest }) {
                   </td>
                   <td>
                     {request.status === 'Pending' ? (
-                      <button className="btn btn-primary btn-compact" type="button" onClick={() => onAcceptRequest(request)}>
-                        Accept Request
-                      </button>
+                      <div className="table-actions">
+                        <button
+                          className="btn btn-primary btn-compact"
+                          type="button"
+                          onClick={() => onAcceptRequest(request)}
+                          disabled={activeRequestId === request.id}
+                        >
+                          {activeRequestId === request.id && activeAction === 'accept' ? 'Accepting...' : 'Accept'}
+                        </button>
+                        <button
+                          className="btn btn-secondary btn-compact"
+                          type="button"
+                          onClick={() => onRejectRequest(request)}
+                          disabled={activeRequestId === request.id}
+                        >
+                          {activeRequestId === request.id && activeAction === 'reject' ? 'Rejecting...' : 'Reject'}
+                        </button>
+                      </div>
                     ) : (
                       <span className="meta">No action</span>
                     )}

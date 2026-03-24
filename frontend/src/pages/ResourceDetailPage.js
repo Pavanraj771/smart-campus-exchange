@@ -10,6 +10,8 @@ function ResourceDetailPage({ resources, currentUser, onDeleteResource, onBorrow
   const [borrowError, setBorrowError] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isBorrowing, setIsBorrowing] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const resource = resources.find((entry) => String(entry.id) === id);
 
   const canDelete = Boolean(currentUser && resource?.ownerEmail && resource.ownerEmail === currentUser.email);
@@ -27,12 +29,15 @@ function ResourceDetailPage({ resources, currentUser, onDeleteResource, onBorrow
 
   const handleDelete = async () => {
     setDeleteError('');
+    setIsDeleting(true);
     const result = await onDeleteResource(resource.id);
     if (!result.ok) {
       setDeleteError(result.message);
+      setIsDeleting(false);
       return;
     }
 
+    setIsDeleting(false);
     setIsDeleteModalOpen(false);
     navigate('/resources');
   };
@@ -40,13 +45,16 @@ function ResourceDetailPage({ resources, currentUser, onDeleteResource, onBorrow
   const handleBorrow = async () => {
     setBorrowError('');
     setBorrowMessage('');
+    setIsBorrowing(true);
     const result = await onBorrowResource(resource.id);
     if (!result.ok) {
       setBorrowError(result.message);
+      setIsBorrowing(false);
       return;
     }
 
     setBorrowMessage(result.message);
+    setIsBorrowing(false);
   };
 
   return (
@@ -79,15 +87,24 @@ function ResourceDetailPage({ resources, currentUser, onDeleteResource, onBorrow
               className="btn btn-primary"
               type="button"
               onClick={handleBorrow}
-              disabled={resource.availability !== 'Available'}
+              disabled={resource.availability !== 'Available' || isBorrowing}
             >
-              {resource.availability === 'Available' ? 'Send Borrow Request' : 'Currently Unavailable'}
+              {isBorrowing
+                ? 'Sending...'
+                : resource.availability === 'Available'
+                  ? 'Send Borrow Request'
+                  : 'Currently Unavailable'}
             </button>
           ) : null}
           {canDelete ? (
-            <button className="btn btn-danger" type="button" onClick={() => setIsDeleteModalOpen(true)}>
-              Delete Resource
-            </button>
+            <>
+              <button className="btn btn-secondary" type="button" onClick={() => navigate(`/resources/${resource.id}/edit`)}>
+                Edit Resource
+              </button>
+              <button className="btn btn-danger" type="button" onClick={() => setIsDeleteModalOpen(true)}>
+                Delete Resource
+              </button>
+            </>
           ) : null}
           <button className="btn btn-secondary" type="button" onClick={() => navigate('/resources')}>
             Back
@@ -112,8 +129,8 @@ function ResourceDetailPage({ resources, currentUser, onDeleteResource, onBorrow
               <button className="btn btn-secondary" type="button" onClick={() => setIsDeleteModalOpen(false)}>
                 Cancel
               </button>
-              <button className="btn btn-danger" type="button" onClick={handleDelete}>
-                Delete
+              <button className="btn btn-danger" type="button" onClick={handleDelete} disabled={isDeleting}>
+                {isDeleting ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>

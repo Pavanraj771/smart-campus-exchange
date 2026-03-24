@@ -1,5 +1,11 @@
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
+from django.core.mail import send_mail
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from django.utils.encoding import force_bytes
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -56,31 +62,61 @@ class LoginSerializer(serializers.Serializer):
 
 class ForgotPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
-    new_password = serializers.CharField(write_only=True, min_length=8)
-    confirm_password = serializers.CharField(write_only=True)
 
     def validate_email(self, value):
         normalized_email = value.strip().lower()
         domain = normalized_email.split("@")[-1]
         if "." not in normalized_email or not domain.endswith("nitw.ac.in"):
             raise serializers.ValidationError("Use a valid email ending with nitw.ac.in.")
-        try:
-            self.instance = User.objects.get(email=normalized_email)
-        except User.DoesNotExist as exc:
-            raise serializers.ValidationError("No account found for this email.") from exc
         return normalized_email
 
+    def save(self):
+        email = self.validated_data["email"]
+        user = User.objects.filter(email=email).first()
+        if not user:
+            return None
+
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        reset_link = f"{settings.FRONTEND_URL}/reset-password?uid={uid}&token={token}"
+        send_mail(
+            subject="Smart Campus Exchange password reset",
+            message=f"Use this link to reset your password:\n{reset_link}",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+        return user
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, min_length=8)
+    confirm_password = serializers.CharField(write_only=True)
+
     def validate(self, attrs):
+        try:
+            user_id = force_str(urlsafe_base64_decode(attrs["uid"]))
+            user = User.objects.get(pk=user_id)
+        except (User.DoesNotExist, ValueError, TypeError, OverflowError) as exc:
+            raise serializers.ValidationError({"detail": "Invalid or expired reset link."}) from exc
+
+        if not default_token_generator.check_token(user, attrs["token"]):
+            raise serializers.ValidationError({"detail": "Invalid or expired reset link."})
+
         if attrs["new_password"] != attrs["confirm_password"]:
             raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
 
-        validate_password(attrs["new_password"], user=self.instance)
+        validate_password(attrs["new_password"], user=user)
+        attrs["user"] = user
         return attrs
 
     def save(self):
-        self.instance.set_password(self.validated_data["new_password"])
-        self.instance.save(update_fields=["password"])
-        return self.instance
+        user = self.validated_data["user"]
+        user.set_password(self.validated_data["new_password"])
+        user.save(update_fields=["password"])
+        return user
 
 
 class ResourceSerializer(serializers.ModelSerializer):

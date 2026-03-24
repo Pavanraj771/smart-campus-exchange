@@ -351,6 +351,11 @@ main {
   font-weight: 600;
 }
 
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .btn-primary {
   background: var(--brand);
   color: var(--on-brand);
@@ -566,8 +571,24 @@ main {
   padding-left: 1.1rem;
 }
 
+.activity-link {
+  color: var(--brand-deep);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.activity-link:hover {
+  text-decoration: underline;
+}
+
 .table-wrap {
   overflow-x: auto;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
 }
 
 table {

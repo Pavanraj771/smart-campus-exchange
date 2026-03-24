@@ -1,5 +1,10 @@
 from django.contrib.auth.models import User
+from django.contrib.auth.tokens import default_token_generator
+from django.core import mail
 from django.urls import reverse
+from django.test import override_settings
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -43,7 +48,8 @@ class AuthApiTests(APITestCase):
         self.assertIn("access", response.data)
         self.assertEqual(response.data["user"]["email"], "student@nitw.ac.in")
 
-    def test_forgot_password_resets_password(self):
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_forgot_password_sends_reset_link(self):
         User.objects.create_user(
             username="student@nitw.ac.in",
             email="student@nitw.ac.in",
@@ -54,6 +60,27 @@ class AuthApiTests(APITestCase):
             reverse("forgot-password"),
             {
                 "email": "student@nitw.ac.in",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_reset_password_resets_password(self):
+        user = User.objects.create_user(
+            username="student@nitw.ac.in",
+            email="student@nitw.ac.in",
+            password="OldStrongPass123!",
+        )
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+
+        response = self.client.post(
+            reverse("reset-password"),
+            {
+                "uid": uid,
+                "token": token,
                 "new_password": "NewStrongPass123!",
                 "confirm_password": "NewStrongPass123!",
             },
@@ -64,10 +91,7 @@ class AuthApiTests(APITestCase):
 
         login_response = self.client.post(
             reverse("login"),
-            {
-                "email": "student@nitw.ac.in",
-                "password": "NewStrongPass123!",
-            },
+            {"email": "student@nitw.ac.in", "password": "NewStrongPass123!"},
             format="json",
         )
         self.assertEqual(login_response.status_code, status.HTTP_200_OK)
@@ -195,3 +219,15 @@ class BorrowRequestApiTests(APITestCase):
         self.assertEqual(borrow_request.status, "accepted")
         self.assertEqual(other_request.status, "rejected")
         self.assertFalse(self.resource.available)
+
+    def test_owner_can_reject_borrow_request(self):
+        borrow_request = BorrowRequest.objects.create(resource=self.resource, requester=self.borrower)
+        self.client.force_authenticate(user=self.owner)
+
+        response = self.client.post(f"/api/borrow/{borrow_request.id}/reject/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        borrow_request.refresh_from_db()
+        self.resource.refresh_from_db()
+        self.assertEqual(borrow_request.status, "rejected")
+        self.assertTrue(self.resource.available)

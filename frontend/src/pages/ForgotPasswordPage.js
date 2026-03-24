@@ -1,15 +1,13 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 function ForgotPasswordPage({ onSubmit }) {
-  const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    email: '',
-    newPassword: '',
-    confirmPassword: ''
+    email: ''
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -20,24 +18,24 @@ function ForgotPasswordPage({ onSubmit }) {
     event.preventDefault();
     setError('');
     setSuccess('');
+    setIsSubmitting(true);
 
     const result = await onSubmit(formData);
     if (!result.ok) {
       setError(result.message);
+      setIsSubmitting(false);
       return;
     }
 
     setSuccess(result.message);
-    window.setTimeout(() => {
-      navigate('/login');
-    }, 1200);
+    setIsSubmitting(false);
   };
 
   return (
     <section className="auth-wrap">
       <form className="auth-card" onSubmit={handleSubmit}>
         <h2>Forgot Password</h2>
-        <p>Reset your account password using your NITW email ending with nitw.ac.in.</p>
+        <p>Enter your NITW email ending with nitw.ac.in and a reset link will be generated.</p>
         <label>
           Email
           <input
@@ -49,32 +47,10 @@ function ForgotPasswordPage({ onSubmit }) {
             required
           />
         </label>
-        <label>
-          New Password
-          <input
-            name="newPassword"
-            type="password"
-            value={formData.newPassword}
-            onChange={handleChange}
-            placeholder="Enter new password"
-            required
-          />
-        </label>
-        <label>
-          Confirm New Password
-          <input
-            name="confirmPassword"
-            type="password"
-            value={formData.confirmPassword}
-            onChange={handleChange}
-            placeholder="Re-enter new password"
-            required
-          />
-        </label>
         {error && <p className="auth-error">{error}</p>}
         {success && <p className="form-feedback form-success">{success}</p>}
-        <button className="btn btn-primary" type="submit">
-          Reset Password
+        <button className="btn btn-primary" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? 'Sending...' : 'Send Reset Link'}
         </button>
         <p className="auth-meta">
           Remembered it? <Link to="/login">Back to login</Link>
