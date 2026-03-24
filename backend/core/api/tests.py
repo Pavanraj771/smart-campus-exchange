@@ -1,3 +1,358 @@
-from django.test import TestCase
+from django.contrib.auth.models import User
+from django.contrib.auth.tokens import default_token_generator
+from django.core import mail
+from django.test import override_settings
+from django.urls import reverse
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
+from rest_framework import status
+from rest_framework.test import APITestCase
 
-# Create your tests here.
+from .models import BorrowRequest, Notification, Resource
+
+
+class AuthApiTests(APITestCase):
+    def test_register_creates_user_and_returns_tokens(self):
+        response = self.client.post(
+            reverse("register"),
+            {
+                "email": "student@nitw.ac.in",
+                "password": "StrongPass123!",
+                "confirm_password": "StrongPass123!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("access", response.data)
+        self.assertEqual(response.data["user"]["email"], "student@nitw.ac.in")
+        self.assertTrue(User.objects.filter(email="student@nitw.ac.in").exists())
+
+    def test_login_requires_valid_credentials(self):
+        User.objects.create_user(
+            username="student@nitw.ac.in",
+            email="student@nitw.ac.in",
+            password="StrongPass123!",
+        )
+
+        response = self.client.post(
+            reverse("login"),
+            {
+                "email": "student@nitw.ac.in",
+                "password": "StrongPass123!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("access", response.data)
+        self.assertEqual(response.data["user"]["email"], "student@nitw.ac.in")
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_forgot_password_sends_reset_link(self):
+        User.objects.create_user(
+            username="student@nitw.ac.in",
+            email="student@nitw.ac.in",
+            password="OldStrongPass123!",
+        )
+
+        response = self.client.post(
+            reverse("forgot-password"),
+            {
+                "email": "student@nitw.ac.in",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_reset_password_resets_password(self):
+        user = User.objects.create_user(
+            username="student@nitw.ac.in",
+            email="student@nitw.ac.in",
+            password="OldStrongPass123!",
+        )
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+
+        response = self.client.post(
+            reverse("reset-password"),
+            {
+                "uid": uid,
+                "token": token,
+                "new_password": "NewStrongPass123!",
+                "confirm_password": "NewStrongPass123!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        login_response = self.client.post(
+            reverse("login"),
+            {"email": "student@nitw.ac.in", "password": "NewStrongPass123!"},
+            format="json",
+        )
+        self.assertEqual(login_response.status_code, status.HTTP_200_OK)
+
+
+class ProfileApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="student@nitw.ac.in",
+            email="student@nitw.ac.in",
+            password="StrongPass123!",
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_profile_can_be_updated(self):
+        response = self.client.patch(
+            reverse("current-user"),
+            {"display_name": "Student Member"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, "Student")
+        self.assertEqual(Notification.objects.filter(user=self.user, title="Profile updated").count(), 1)
+
+    def test_change_password_requires_current_password(self):
+        response = self.client.post(
+            reverse("change-password"),
+            {
+                "current_password": "StrongPass123!",
+                "new_password": "UpdatedPass123!",
+                "confirm_password": "UpdatedPass123!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("UpdatedPass123!"))
+
+
+class ResourceApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="owner@nitw.ac.in",
+            email="owner@nitw.ac.in",
+            password="StrongPass123!",
+        )
+
+    def test_resource_creation_requires_authentication(self):
+        response = self.client.post(
+            "/api/resources/",
+            {
+                "title": "Arduino Uno Kit",
+                "description": "Starter board with cables for embedded systems lab use.",
+                "category": "Electronics",
+                "condition": "Good",
+                "department": "ECE",
+                "location": "Library Block A",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_authenticated_user_can_create_resource_with_data_image(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(
+            "/api/resources/",
+            {
+                "title": "Arduino Uno Kit",
+                "description": "Starter board with cables for embedded systems lab use.",
+                "category": "Electronics",
+                "condition": "Good",
+                "department": "ECE",
+                "location": "Library Block A",
+                "image": "data:image/png;base64,abc123",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["owner_email"], "owner@nitw.ac.in")
+        self.assertEqual(response.data["availability"], "Available")
+        self.assertTrue(Resource.objects.filter(title="Arduino Uno Kit", owner=self.user).exists())
+
+    def test_invalid_resource_image_is_rejected(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(
+            "/api/resources/",
+            {
+                "title": "Arduino Uno Kit",
+                "description": "Starter board with cables for embedded systems lab use.",
+                "category": "Electronics",
+                "condition": "Good",
+                "department": "ECE",
+                "location": "Library Block A",
+                "image": "not-an-image-reference",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class BorrowRequestApiTests(APITestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="owner@nitw.ac.in",
+            email="owner@nitw.ac.in",
+            password="StrongPass123!",
+        )
+        self.borrower = User.objects.create_user(
+            username="borrower@nitw.ac.in",
+            email="borrower@nitw.ac.in",
+            password="StrongPass123!",
+        )
+        self.resource = Resource.objects.create(
+            title="Digital Logic Notes",
+            description="Semester notes for digital logic design and timing analysis.",
+            category="Notes",
+            condition="Good",
+            department="ECE",
+            location="Hostel H2",
+            owner=self.owner,
+        )
+
+    def test_authenticated_user_can_create_borrow_request(self):
+        self.client.force_authenticate(user=self.borrower)
+
+        response = self.client.post(
+            "/api/borrow/",
+            {"resource": self.resource.id, "duration_days": 5, "message": "Need it for exam prep."},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["requester_email"], "borrower@nitw.ac.in")
+        self.assertEqual(response.data["resource_title"], "Digital Logic Notes")
+        self.assertEqual(response.data["duration_days"], 5)
+        self.assertEqual(Notification.objects.filter(user=self.owner, title="New borrow request").count(), 1)
+
+    def test_borrow_request_list_is_limited_to_current_user(self):
+        BorrowRequest.objects.create(resource=self.resource, requester=self.borrower)
+        BorrowRequest.objects.create(resource=self.resource, requester=self.owner)
+        self.client.force_authenticate(user=self.borrower)
+
+        response = self.client.get("/api/borrow/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["requester_email"], "borrower@nitw.ac.in")
+
+    def test_owner_can_view_incoming_requests(self):
+        BorrowRequest.objects.create(resource=self.resource, requester=self.borrower)
+        self.client.force_authenticate(user=self.owner)
+
+        response = self.client.get("/api/borrow/incoming/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["requester_email"], "borrower@nitw.ac.in")
+
+    def test_owner_can_accept_borrow_request_and_hide_resource(self):
+        borrow_request = BorrowRequest.objects.create(resource=self.resource, requester=self.borrower)
+        other_borrower = User.objects.create_user(
+            username="other@nitw.ac.in",
+            email="other@nitw.ac.in",
+            password="StrongPass123!",
+        )
+        other_request = BorrowRequest.objects.create(resource=self.resource, requester=other_borrower)
+        self.client.force_authenticate(user=self.owner)
+
+        response = self.client.post(f"/api/borrow/{borrow_request.id}/accept/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        borrow_request.refresh_from_db()
+        other_request.refresh_from_db()
+        self.resource.refresh_from_db()
+        self.assertEqual(borrow_request.status, "accepted")
+        self.assertEqual(other_request.status, "rejected")
+        self.assertFalse(self.resource.available)
+
+    def test_owner_can_reject_borrow_request(self):
+        borrow_request = BorrowRequest.objects.create(resource=self.resource, requester=self.borrower)
+        self.client.force_authenticate(user=self.owner)
+
+        response = self.client.post(f"/api/borrow/{borrow_request.id}/reject/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        borrow_request.refresh_from_db()
+        self.resource.refresh_from_db()
+        self.assertEqual(borrow_request.status, "rejected")
+        self.assertTrue(self.resource.available)
+
+    def test_owner_can_complete_returned_borrow_request(self):
+        borrow_request = BorrowRequest.objects.create(resource=self.resource, requester=self.borrower, status="accepted")
+        self.resource.available = False
+        self.resource.save(update_fields=["available"])
+        self.client.force_authenticate(user=self.owner)
+
+        response = self.client.post(f"/api/borrow/{borrow_request.id}/complete/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        borrow_request.refresh_from_db()
+        self.resource.refresh_from_db()
+        self.assertEqual(borrow_request.status, "returned")
+        self.assertTrue(self.resource.available)
+        self.assertIsNotNone(borrow_request.completed_at)
+
+    def test_borrower_can_cancel_pending_borrow_request(self):
+        borrow_request = BorrowRequest.objects.create(resource=self.resource, requester=self.borrower)
+        self.client.force_authenticate(user=self.borrower)
+
+        response = self.client.delete(f"/api/borrow/{borrow_request.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(BorrowRequest.objects.filter(pk=borrow_request.id).exists())
+
+    def test_borrower_cannot_cancel_non_pending_borrow_request(self):
+        borrow_request = BorrowRequest.objects.create(
+            resource=self.resource,
+            requester=self.borrower,
+            status="accepted",
+        )
+        self.client.force_authenticate(user=self.borrower)
+
+        response = self.client.delete(f"/api/borrow/{borrow_request.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(BorrowRequest.objects.filter(pk=borrow_request.id).exists())
+
+
+class NotificationApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="student@nitw.ac.in",
+            email="student@nitw.ac.in",
+            password="StrongPass123!",
+        )
+        self.notification = Notification.objects.create(
+            user=self.user,
+            title="Borrow request accepted",
+            message="Your request was accepted.",
+            link="/requests",
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_user_can_list_notifications(self):
+        response = self.client.get("/api/notifications/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["title"], "Borrow request accepted")
+
+    def test_user_can_mark_notification_as_read(self):
+        response = self.client.post(f"/api/notifications/{self.notification.id}/read/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.notification.refresh_from_db()
+        self.assertTrue(self.notification.is_read)
