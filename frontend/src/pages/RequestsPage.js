@@ -1,0 +1,59 @@
+function RequestsPage({ requests, currentUser }) {
+  const visibleRequests = currentUser
+    ? requests.filter((request) => !request.requesterEmail || request.requesterEmail === currentUser.email)
+    : requests;
+
+  return (
+    <section>
+      <div className="section-head">
+        <h2>Borrow Requests</h2>
+        <p>Track your borrow requests in one table.</p>
+      </div>
+      {visibleRequests.length ? (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Request ID</th>
+                <th>Item</th>
+                <th>Requester</th>
+                <th>Duration</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRequests.map((request) => (
+                <tr key={request.id}>
+                  <td>{request.id}</td>
+                  <td>{request.item}</td>
+                  <td>{request.requester}</td>
+                  <td>{request.duration}</td>
+                  <td>
+                    <span
+                      className={
+                        request.status === 'Approved'
+                          ? 'pill success'
+                          : request.status === 'Pending'
+                            ? 'pill warning'
+                            : 'pill neutral'
+                      }
+                    >
+                      {request.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="empty-state">
+          <h3>No borrow requests yet</h3>
+          <p>Your new requests will appear here.</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default RequestsPage;

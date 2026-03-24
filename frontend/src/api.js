@@ -1,0 +1,143 @@
+import axios from 'axios';
+
+export const ACCESS_TOKEN_KEY = 'scx_access_token';
+export const REFRESH_TOKEN_KEY = 'scx_refresh_token';
+
+const api = axios.create({
+  baseURL: '/api'
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+function toDisplayName(text) {
+  return (
+    text
+      ?.replace(/[_-]/g, ' ')
+      .split(' ')
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ') || 'Campus Member'
+  );
+}
+
+export function normalizeUser(user) {
+  return {
+    id: user.id,
+    email: user.email,
+    username: user.username,
+    displayName: user.display_name || toDisplayName(user.email?.split('@')[0] || user.username)
+  };
+}
+
+export function normalizeResource(resource) {
+  const ownerLabel =
+    typeof resource.owner === 'string'
+      ? resource.owner
+      : resource.owner?.display_name || toDisplayName(resource.owner?.email?.split('@')[0] || '');
+
+  return {
+    id: resource.id,
+    title: resource.title,
+    category: resource.category,
+    owner: ownerLabel,
+    ownerEmail: resource.owner_email || resource.owner?.email || '',
+    department: resource.department,
+    condition: resource.condition,
+    availability: resource.availability || (resource.available ? 'Available' : 'Borrowed'),
+    location: resource.location,
+    rating: Number(resource.rating),
+    description: resource.description,
+    image: resource.image || '',
+    createdAt: resource.created_at
+  };
+}
+
+export function normalizeBorrowRequest(request) {
+  return {
+    id: `RQ-${request.id}`,
+    resourceId: request.resource,
+    item: request.resource_title,
+    requester:
+      request.requester?.display_name || toDisplayName(request.requester_email?.split('@')[0] || 'campus.member'),
+    requesterEmail: request.requester_email || request.requester?.email || '',
+    duration: '3 days',
+    status:
+      request.status === 'accepted' ? 'Approved' : request.status === 'rejected' ? 'Rejected' : 'Pending',
+    createdAt: request.request_date,
+    rawId: request.id
+  };
+}
+
+export async function registerUser(payload) {
+  const response = await api.post('/auth/register/', payload);
+  return response.data;
+}
+
+export async function loginUser(payload) {
+  const response = await api.post('/auth/login/', payload);
+  return response.data;
+}
+
+export async function forgotPassword(payload) {
+  const response = await api.post('/auth/forgot-password/', payload);
+  return response.data;
+}
+
+export async function fetchCurrentUser() {
+  const response = await api.get('/auth/me/');
+  return response.data;
+}
+
+export async function fetchResources() {
+  const response = await api.get('/resources/');
+  return response.data;
+}
+
+export async function createResource(payload) {
+  const response = await api.post('/resources/', payload);
+  return response.data;
+}
+
+export async function deleteResource(resourceId) {
+  await api.delete(`/resources/${resourceId}/`);
+}
+
+export async function fetchBorrowRequests() {
+  const response = await api.get('/borrow/');
+  return response.data;
+}
+
+export async function createBorrowRequest(payload) {
+  const response = await api.post('/borrow/', payload);
+  return response.data;
+}
+
+export async function fetchIncomingBorrowRequests() {
+  const response = await api.get('/borrow/incoming/');
+  return response.data;
+}
+
+export async function acceptBorrowRequest(requestId) {
+  const response = await api.post(`/borrow/${requestId}/accept/`);
+  return response.data;
+}
+
+export function persistTokens(tokens) {
+  localStorage.setItem(ACCESS_TOKEN_KEY, tokens.access);
+  localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refresh);
+}
+
+export function clearTokens() {
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
+export function hasAccessToken() {
+  return Boolean(localStorage.getItem(ACCESS_TOKEN_KEY));
+}
