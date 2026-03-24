@@ -77,6 +77,7 @@ function App() {
   const [incomingRequests, setIncomingRequests] = useState([]);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [acceptingRequest, setAcceptingRequest] = useState(null);
+  const [cancellingRequest, setCancellingRequest] = useState(null);
   const [requestActionState, setRequestActionState] = useState({ id: null, type: null });
   const [authResolved, setAuthResolved] = useState(false);
   const [resourcesLoaded, setResourcesLoaded] = useState(false);
@@ -314,13 +315,22 @@ function App() {
     }
   };
 
-  const handleCancelBorrowRequest = async (request) => {
+  const handleCancelBorrowRequest = (request) => {
+    setCancellingRequest(request);
+  };
+
+  const confirmCancelBorrowRequest = async () => {
+    if (!cancellingRequest) {
+      return;
+    }
+
     try {
-      setRequestActionState({ id: request.id, type: 'cancel' });
-      await cancelBorrowRequest(request.rawId);
-      setBorrowRequests((prev) => prev.filter((entry) => entry.rawId !== request.rawId));
+      setRequestActionState({ id: cancellingRequest.id, type: 'cancel' });
+      await cancelBorrowRequest(cancellingRequest.rawId);
+      setBorrowRequests((prev) => prev.filter((entry) => entry.rawId !== cancellingRequest.rawId));
     } finally {
       setRequestActionState({ id: null, type: null });
+      setCancellingRequest(null);
     }
   };
 
@@ -581,6 +591,31 @@ function App() {
                 </button>
                 <button className="btn btn-primary" type="button" onClick={confirmAcceptIncomingRequest}>
                   Accept Request
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {cancellingRequest ? (
+          <div className="modal-backdrop" role="presentation" onClick={() => setCancellingRequest(null)}>
+            <div
+              className="confirm-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="cancel-request-modal-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <p className="eyebrow">Confirm action</p>
+              <h2 id="cancel-request-modal-title">Cancel this borrow request?</h2>
+              <p className="confirm-modal-text">
+                Your pending request for <strong>{cancellingRequest.item}</strong> will be removed.
+              </p>
+              <div className="confirm-modal-actions">
+                <button className="btn btn-secondary" type="button" onClick={() => setCancellingRequest(null)}>
+                  Keep Request
+                </button>
+                <button className="btn btn-danger" type="button" onClick={confirmCancelBorrowRequest}>
+                  Cancel Request
                 </button>
               </div>
             </div>
