@@ -1,14 +1,22 @@
 import { NavLink } from 'react-router-dom';
 
-const navItems = [
+const guestNavItems = [
+  { to: '/', label: 'Home' },
+  { to: '/resources', label: 'Resources' }
+];
+
+const userNavItems = [
   { to: '/', label: 'Home' },
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/resources', label: 'Resources' },
   { to: '/requests', label: 'Requests' },
+  { to: '/my-resources', label: 'My Items' },
   { to: '/post-resource', label: 'Post Item' }
 ];
 
-function AppShell({ children, currentUser, onLogout, theme, onToggleTheme }) {
+function AppShell({ children, currentUser, onLogout, theme, onToggleTheme, unreadNotifications }) {
+  const navItems = currentUser ? userNavItems : guestNavItems;
+
   return (
     <div className="app-shell">
       <header className="site-header">
@@ -47,6 +55,10 @@ function AppShell({ children, currentUser, onLogout, theme, onToggleTheme }) {
             <div className="site-nav-actions">
               {currentUser ? (
                 <>
+                  <NavLink to="/notifications" className="nav-notification-link">
+                    Notifications
+                    {unreadNotifications ? <span className="nav-badge">{unreadNotifications}</span> : null}
+                  </NavLink>
                   <NavLink to="/profile">Profile</NavLink>
                   <button className="nav-button" type="button" onClick={onLogout}>
                     Logout

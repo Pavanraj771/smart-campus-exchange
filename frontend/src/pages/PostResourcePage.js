@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const initialFormData = {
@@ -26,6 +25,7 @@ function PostResourcePage({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isReadingImage, setIsReadingImage] = useState(false);
 
   useEffect(() => {
     setFormData(initialData || initialFormData);
@@ -34,6 +34,31 @@ function PostResourcePage({
   const handleChange = (event) => {
     const { name, value } = event.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please select a valid image file.');
+      return;
+    }
+
+    const reader = new FileReader();
+    setError('');
+    setIsReadingImage(true);
+    reader.onload = () => {
+      setFormData((prev) => ({ ...prev, imageUrl: typeof reader.result === 'string' ? reader.result : prev.imageUrl }));
+      setIsReadingImage(false);
+    };
+    reader.onerror = () => {
+      setError('Unable to read the selected image file.');
+      setIsReadingImage(false);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSubmit = async (event) => {
@@ -74,6 +99,7 @@ function PostResourcePage({
             value={formData.title}
             onChange={handleChange}
             placeholder="Ex: Arduino Uno Kit"
+            required
           />
         </label>
         <label>
@@ -102,6 +128,7 @@ function PostResourcePage({
             value={formData.department}
             onChange={handleChange}
             placeholder="Ex: ECE"
+            required
           />
         </label>
         <label>
@@ -112,18 +139,29 @@ function PostResourcePage({
             value={formData.location}
             onChange={handleChange}
             placeholder="Ex: Library Block A"
+            required
           />
         </label>
-        <label className="span-2">
+        <label>
           Image URL
           <input
             name="imageUrl"
-            type="url"
+            type="text"
             value={formData.imageUrl}
             onChange={handleChange}
             placeholder="https://example.com/resource-image.jpg"
           />
         </label>
+        <label className="span-2">
+          Upload Image
+          <input type="file" accept="image/*" onChange={handleFileChange} />
+          <span className="meta">Upload a local image or paste a hosted image URL.</span>
+        </label>
+        {formData.imageUrl ? (
+          <div className="span-2 image-preview-card">
+            <img src={formData.imageUrl} alt="Preview" className="image-preview" />
+          </div>
+        ) : null}
         <label className="span-2">
           Description
           <textarea
@@ -132,12 +170,13 @@ function PostResourcePage({
             value={formData.description}
             onChange={handleChange}
             placeholder="Mention what is included and any usage notes."
+            required
           />
         </label>
         {error && <p className="form-feedback form-error span-2">{error}</p>}
         {success && <p className="form-feedback form-success span-2">{success}</p>}
-        <button className="btn btn-primary form-submit-btn" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Saving...' : buttonText}
+        <button className="btn btn-primary form-submit-btn" type="submit" disabled={isSubmitting || isReadingImage}>
+          {isReadingImage ? 'Processing image...' : isSubmitting ? 'Saving...' : buttonText}
         </button>
       </form>
     </section>

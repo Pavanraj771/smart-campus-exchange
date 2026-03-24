@@ -1,15 +1,44 @@
 from django.conf import settings
+from django.contrib.auth import password_validation
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
-from django.utils.encoding import force_str
+from django.core.validators import URLValidator
+from django.utils import timezone
+from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
-from django.utils.encoding import force_bytes
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import BorrowRequest, Rating, Resource
+from .models import BorrowRequest, Notification, Rating, Resource
+
+
+url_validator = URLValidator(schemes=["http", "https"])
+
+
+def validate_nitw_email(value):
+    normalized_email = value.strip().lower()
+    domain = normalized_email.split("@")[-1]
+    if "." not in normalized_email or not domain.endswith("nitw.ac.in"):
+        raise serializers.ValidationError("Use a valid email ending with nitw.ac.in.")
+    return normalized_email
+
+
+def validate_image_reference(value):
+    normalized_value = (value or "").strip()
+    if not normalized_value:
+        return ""
+
+    if normalized_value.startswith("data:image/"):
+        return normalized_value
+
+    try:
+        url_validator(normalized_value)
+    except Exception as exc:
+        raise serializers.ValidationError("Provide a valid image URL or upload an image file.") from exc
+
+    return normalized_value
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -30,10 +59,7 @@ class RegisterSerializer(serializers.Serializer):
     confirm_password = serializers.CharField(write_only=True)
 
     def validate_email(self, value):
-        normalized_email = value.strip().lower()
-        domain = normalized_email.split("@")[-1]
-        if "." not in normalized_email or not domain.endswith("nitw.ac.in"):
-            raise serializers.ValidationError("Use a valid email ending with nitw.ac.in.")
+        normalized_email = validate_nitw_email(value)
         if User.objects.filter(email=normalized_email).exists():
             raise serializers.ValidationError("This email is already registered.")
         return normalized_email
@@ -64,11 +90,7 @@ class ForgotPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
     def validate_email(self, value):
-        normalized_email = value.strip().lower()
-        domain = normalized_email.split("@")[-1]
-        if "." not in normalized_email or not domain.endswith("nitw.ac.in"):
-            raise serializers.ValidationError("Use a valid email ending with nitw.ac.in.")
-        return normalized_email
+        return validate_nitw_email(value)
 
     def save(self):
         email = self.validated_data["email"]
@@ -119,10 +141,53 @@ class ResetPasswordSerializer(serializers.Serializer):
         return user
 
 
+class ProfileUpdateSerializer(serializers.Serializer):
+    display_name = serializers.CharField(max_length=150)
+
+    def validate_display_name(self, value):
+        cleaned_value = value.strip()
+        if len(cleaned_value) < 2:
+            raise serializers.ValidationError("Display name must be at least 2 characters long.")
+        return cleaned_value
+
+    def update(self, instance, validated_data):
+        display_name = validated_data["display_name"]
+        parts = display_name.split()
+        instance.first_name = parts[0]
+        instance.last_name = " ".join(parts[1:])
+        instance.save(update_fields=["first_name", "last_name"])
+        return instance
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, min_length=8)
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        user = self.context["request"].user
+
+        if not user.check_password(attrs["current_password"]):
+            raise serializers.ValidationError({"current_password": "Current password is incorrect."})
+
+        if attrs["new_password"] != attrs["confirm_password"]:
+            raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
+
+        validate_password(attrs["new_password"], user=user)
+        return attrs
+
+    def save(self, **kwargs):
+        user = self.context["request"].user
+        user.set_password(self.validated_data["new_password"])
+        user.save(update_fields=["password"])
+        password_validation.password_changed(self.validated_data["new_password"], user=user)
+        return user
+
+
 class ResourceSerializer(serializers.ModelSerializer):
     owner = UserSerializer(read_only=True)
     owner_email = serializers.EmailField(source="owner.email", read_only=True)
-    image = serializers.URLField(source="image_url", allow_blank=True, required=False)
+    image = serializers.CharField(source="image_url", allow_blank=True, required=False)
     availability = serializers.SerializerMethodField()
 
     class Meta:
@@ -142,8 +207,36 @@ class ResourceSerializer(serializers.ModelSerializer):
             "available",
             "rating",
             "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["id", "owner", "owner_email", "availability", "created_at"]
+        read_only_fields = ["id", "owner", "owner_email", "availability", "created_at", "updated_at"]
+
+    def validate_title(self, value):
+        cleaned_value = value.strip()
+        if len(cleaned_value) < 3:
+            raise serializers.ValidationError("Title must be at least 3 characters long.")
+        return cleaned_value
+
+    def validate_department(self, value):
+        cleaned_value = value.strip()
+        if len(cleaned_value) < 2:
+            raise serializers.ValidationError("Department is required.")
+        return cleaned_value
+
+    def validate_location(self, value):
+        cleaned_value = value.strip()
+        if len(cleaned_value) < 3:
+            raise serializers.ValidationError("Pickup location is required.")
+        return cleaned_value
+
+    def validate_description(self, value):
+        cleaned_value = value.strip()
+        if len(cleaned_value) < 20:
+            raise serializers.ValidationError("Description must be at least 20 characters long.")
+        return cleaned_value
+
+    def validate_image(self, value):
+        return validate_image_reference(value)
 
     def get_availability(self, obj):
         return "Available" if obj.available else "Borrowed"
@@ -162,10 +255,24 @@ class BorrowRequestSerializer(serializers.ModelSerializer):
             "resource_title",
             "requester",
             "requester_email",
+            "duration_days",
+            "message",
             "status",
             "request_date",
+            "completed_at",
         ]
-        read_only_fields = ["request_date", "requester"]
+        read_only_fields = ["request_date", "requester", "status", "completed_at"]
+
+    def validate_duration_days(self, value):
+        if value < 1 or value > 30:
+            raise serializers.ValidationError("Borrow duration must be between 1 and 30 days.")
+        return value
+
+    def validate_message(self, value):
+        cleaned_value = value.strip()
+        if len(cleaned_value) > 300:
+            raise serializers.ValidationError("Request message must be 300 characters or less.")
+        return cleaned_value
 
     def validate(self, attrs):
         request = self.context.get("request")
@@ -183,12 +290,20 @@ class BorrowRequestSerializer(serializers.ModelSerializer):
         existing_request = BorrowRequest.objects.filter(
             resource=resource,
             requester=request.user,
-            status="pending",
+            status__in=["pending", "accepted"],
         ).exists()
         if existing_request:
-            raise serializers.ValidationError({"resource": "You already have a pending request for this resource."})
+            raise serializers.ValidationError(
+                {"resource": "You already have an active request for this resource."}
+            )
 
         return attrs
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ["id", "title", "message", "link", "is_read", "created_at"]
 
 
 class RatingSerializer(serializers.ModelSerializer):

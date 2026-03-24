@@ -1,9 +1,16 @@
-function IncomingRequestsPage({ requests, onAcceptRequest, onRejectRequest, activeRequestId, activeAction }) {
+function IncomingRequestsPage({
+  requests,
+  onAcceptRequest,
+  onRejectRequest,
+  onCompleteRequest,
+  activeRequestId,
+  activeAction
+}) {
   return (
     <section>
       <div className="section-head">
         <h2>Incoming Borrow Requests</h2>
-        <p>Review who requested your resources and accept one for the item you want to lend.</p>
+        <p>Review request details, accept one borrower, and mark the item returned when it comes back.</p>
       </div>
       {requests.length ? (
         <div className="table-wrap">
@@ -14,6 +21,8 @@ function IncomingRequestsPage({ requests, onAcceptRequest, onRejectRequest, acti
                 <th>Resource</th>
                 <th>Requester</th>
                 <th>Email</th>
+                <th>Duration</th>
+                <th>Message</th>
                 <th>Status</th>
                 <th>Action</th>
               </tr>
@@ -25,6 +34,8 @@ function IncomingRequestsPage({ requests, onAcceptRequest, onRejectRequest, acti
                   <td>{request.item}</td>
                   <td>{request.requester}</td>
                   <td>{request.requesterEmail}</td>
+                  <td>{request.duration}</td>
+                  <td>{request.message || <span className="meta">No message</span>}</td>
                   <td>
                     <span
                       className={
@@ -32,7 +43,9 @@ function IncomingRequestsPage({ requests, onAcceptRequest, onRejectRequest, acti
                           ? 'pill success'
                           : request.status === 'Pending'
                             ? 'pill warning'
-                            : 'pill neutral'
+                            : request.status === 'Returned'
+                              ? 'pill success'
+                              : 'pill neutral'
                       }
                     >
                       {request.status}
@@ -58,6 +71,15 @@ function IncomingRequestsPage({ requests, onAcceptRequest, onRejectRequest, acti
                           {activeRequestId === request.id && activeAction === 'reject' ? 'Rejecting...' : 'Reject'}
                         </button>
                       </div>
+                    ) : request.status === 'Approved' ? (
+                      <button
+                        className="btn btn-secondary btn-compact"
+                        type="button"
+                        onClick={() => onCompleteRequest(request)}
+                        disabled={activeRequestId === request.id}
+                      >
+                        {activeRequestId === request.id && activeAction === 'complete' ? 'Updating...' : 'Mark Returned'}
+                      </button>
                     ) : (
                       <span className="meta">No action</span>
                     )}

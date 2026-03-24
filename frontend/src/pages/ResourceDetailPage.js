@@ -6,6 +6,7 @@ const fallbackImage = 'https://placehold.co/900x600/e9efe8/1f3b3a?text=Resource+
 function ResourceDetailPage({ resources, currentUser, onDeleteResource, onBorrowResource }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [borrowForm, setBorrowForm] = useState({ durationDays: 3, message: '' });
   const [borrowMessage, setBorrowMessage] = useState('');
   const [borrowError, setBorrowError] = useState('');
   const [deleteError, setDeleteError] = useState('');
@@ -46,7 +47,7 @@ function ResourceDetailPage({ resources, currentUser, onDeleteResource, onBorrow
     setBorrowError('');
     setBorrowMessage('');
     setIsBorrowing(true);
-    const result = await onBorrowResource(resource.id);
+    const result = await onBorrowResource(resource.id, borrowForm);
     if (!result.ok) {
       setBorrowError(result.message);
       setIsBorrowing(false);
@@ -54,6 +55,7 @@ function ResourceDetailPage({ resources, currentUser, onDeleteResource, onBorrow
     }
 
     setBorrowMessage(result.message);
+    setBorrowForm({ durationDays: 3, message: '' });
     setIsBorrowing(false);
   };
 
@@ -78,6 +80,32 @@ function ResourceDetailPage({ resources, currentUser, onDeleteResource, onBorrow
           <li>Pickup: {resource.location}</li>
           <li>Rating: {resource.rating} / 5</li>
         </ul>
+        {!canDelete ? (
+          <div className="borrow-form-card">
+            <label>
+              Borrow Duration
+              <select
+                value={borrowForm.durationDays}
+                onChange={(event) => setBorrowForm((prev) => ({ ...prev, durationDays: Number(event.target.value) }))}
+              >
+                {[1, 3, 5, 7, 10, 14].map((days) => (
+                  <option key={days} value={days}>
+                    {days} day{days === 1 ? '' : 's'}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Request Message
+              <textarea
+                rows="3"
+                value={borrowForm.message}
+                onChange={(event) => setBorrowForm((prev) => ({ ...prev, message: event.target.value }))}
+                placeholder="Add context for why you need this resource."
+              />
+            </label>
+          </div>
+        ) : null}
         {borrowError && <p className="form-feedback form-error">{borrowError}</p>}
         {borrowMessage && <p className="form-feedback form-success">{borrowMessage}</p>}
         {deleteError && <p className="form-feedback form-error">{deleteError}</p>}

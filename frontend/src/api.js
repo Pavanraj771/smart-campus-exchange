@@ -89,11 +89,19 @@ export function normalizeResource(resource) {
     rating: Number(resource.rating),
     description: resource.description,
     image: resource.image || '',
-    createdAt: resource.created_at
+    createdAt: resource.created_at,
+    updatedAt: resource.updated_at
   };
 }
 
 export function normalizeBorrowRequest(request) {
+  const statusMap = {
+    accepted: 'Approved',
+    rejected: 'Rejected',
+    returned: 'Returned',
+    pending: 'Pending'
+  };
+
   return {
     id: `RQ-${request.id}`,
     resourceId: request.resource,
@@ -101,11 +109,24 @@ export function normalizeBorrowRequest(request) {
     requester:
       request.requester?.display_name || toDisplayName(request.requester_email?.split('@')[0] || 'campus.member'),
     requesterEmail: request.requester_email || request.requester?.email || '',
-    duration: '3 days',
-    status:
-      request.status === 'accepted' ? 'Approved' : request.status === 'rejected' ? 'Rejected' : 'Pending',
+    duration: `${request.duration_days} day${request.duration_days === 1 ? '' : 's'}`,
+    durationDays: request.duration_days,
+    message: request.message || '',
+    status: statusMap[request.status] || 'Pending',
     createdAt: request.request_date,
+    completedAt: request.completed_at,
     rawId: request.id
+  };
+}
+
+export function normalizeNotification(notification) {
+  return {
+    id: notification.id,
+    title: notification.title,
+    message: notification.message,
+    link: notification.link || '',
+    isRead: notification.is_read,
+    createdAt: notification.created_at
   };
 }
 
@@ -131,6 +152,16 @@ export async function resetPassword(payload) {
 
 export async function fetchCurrentUser() {
   const response = await api.get('/auth/me/');
+  return response.data;
+}
+
+export async function updateCurrentUser(payload) {
+  const response = await api.patch('/auth/me/', payload);
+  return response.data;
+}
+
+export async function changePassword(payload) {
+  const response = await api.post('/auth/change-password/', payload);
   return response.data;
 }
 
@@ -179,6 +210,26 @@ export async function acceptBorrowRequest(requestId) {
 
 export async function rejectBorrowRequest(requestId) {
   const response = await api.post(`/borrow/${requestId}/reject/`);
+  return response.data;
+}
+
+export async function completeBorrowRequest(requestId) {
+  const response = await api.post(`/borrow/${requestId}/complete/`);
+  return response.data;
+}
+
+export async function fetchNotifications() {
+  const response = await api.get('/notifications/');
+  return response.data;
+}
+
+export async function markNotificationRead(notificationId) {
+  const response = await api.post(`/notifications/${notificationId}/read/`);
+  return response.data;
+}
+
+export async function markAllNotificationsRead() {
+  const response = await api.post('/notifications/mark-all-read/');
   return response.data;
 }
 

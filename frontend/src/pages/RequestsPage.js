@@ -7,7 +7,7 @@ function RequestsPage({ requests, currentUser, onCancelRequest, activeRequestId 
     <section>
       <div className="section-head">
         <h2>Borrow Requests</h2>
-        <p>Track your borrow requests in one table.</p>
+        <p>Track your outgoing requests, duration, and return status.</p>
       </div>
       {visibleRequests.length ? (
         <div className="table-wrap">
@@ -16,8 +16,9 @@ function RequestsPage({ requests, currentUser, onCancelRequest, activeRequestId 
               <tr>
                 <th>Request ID</th>
                 <th>Item</th>
-                <th>Requester</th>
+                <th>Owner Reply</th>
                 <th>Duration</th>
+                <th>Message</th>
                 <th>Status</th>
                 <th>Action</th>
               </tr>
@@ -27,8 +28,9 @@ function RequestsPage({ requests, currentUser, onCancelRequest, activeRequestId 
                 <tr key={request.id}>
                   <td>{request.id}</td>
                   <td>{request.item}</td>
-                  <td>{request.requester}</td>
+                  <td>{request.status === 'Pending' ? 'Waiting for owner' : 'Updated'}</td>
                   <td>{request.duration}</td>
+                  <td>{request.message || <span className="meta">No message</span>}</td>
                   <td>
                     <span
                       className={
@@ -36,7 +38,9 @@ function RequestsPage({ requests, currentUser, onCancelRequest, activeRequestId 
                           ? 'pill success'
                           : request.status === 'Pending'
                             ? 'pill warning'
-                            : 'pill neutral'
+                            : request.status === 'Returned'
+                              ? 'pill success'
+                              : 'pill neutral'
                       }
                     >
                       {request.status}
