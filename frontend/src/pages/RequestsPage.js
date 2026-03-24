@@ -1,4 +1,4 @@
-function RequestsPage({ requests, currentUser }) {
+function RequestsPage({ requests, currentUser, onCancelRequest, activeRequestId }) {
   const visibleRequests = currentUser
     ? requests.filter((request) => !request.requesterEmail || request.requesterEmail === currentUser.email)
     : requests;
@@ -19,6 +19,7 @@ function RequestsPage({ requests, currentUser }) {
                 <th>Requester</th>
                 <th>Duration</th>
                 <th>Status</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -40,6 +41,20 @@ function RequestsPage({ requests, currentUser }) {
                     >
                       {request.status}
                     </span>
+                  </td>
+                  <td>
+                    {request.status === 'Pending' ? (
+                      <button
+                        className="btn btn-secondary btn-compact"
+                        type="button"
+                        onClick={() => onCancelRequest(request)}
+                        disabled={activeRequestId === request.id}
+                      >
+                        {activeRequestId === request.id ? 'Cancelling...' : 'Cancel Request'}
+                      </button>
+                    ) : (
+                      <span className="meta">No action</span>
+                    )}
                   </td>
                 </tr>
               ))}

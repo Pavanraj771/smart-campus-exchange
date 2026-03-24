@@ -231,3 +231,25 @@ class BorrowRequestApiTests(APITestCase):
         self.resource.refresh_from_db()
         self.assertEqual(borrow_request.status, "rejected")
         self.assertTrue(self.resource.available)
+
+    def test_borrower_can_cancel_pending_borrow_request(self):
+        borrow_request = BorrowRequest.objects.create(resource=self.resource, requester=self.borrower)
+        self.client.force_authenticate(user=self.borrower)
+
+        response = self.client.delete(f"/api/borrow/{borrow_request.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(BorrowRequest.objects.filter(pk=borrow_request.id).exists())
+
+    def test_borrower_cannot_cancel_non_pending_borrow_request(self):
+        borrow_request = BorrowRequest.objects.create(
+            resource=self.resource,
+            requester=self.borrower,
+            status="accepted",
+        )
+        self.client.force_authenticate(user=self.borrower)
+
+        response = self.client.delete(f"/api/borrow/{borrow_request.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(BorrowRequest.objects.filter(pk=borrow_request.id).exists())

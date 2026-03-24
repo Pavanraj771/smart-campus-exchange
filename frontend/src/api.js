@@ -163,6 +163,10 @@ export async function createBorrowRequest(payload) {
   return response.data;
 }
 
+export async function cancelBorrowRequest(requestId) {
+  await api.delete(`/borrow/${requestId}/`);
+}
+
 export async function fetchIncomingBorrowRequests() {
   const response = await api.get('/borrow/incoming/');
   return response.data;

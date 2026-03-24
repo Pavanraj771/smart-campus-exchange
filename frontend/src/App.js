@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import {
   acceptBorrowRequest,
+  cancelBorrowRequest,
   clearTokens,
   createBorrowRequest,
   createResource,
@@ -313,6 +314,16 @@ function App() {
     }
   };
 
+  const handleCancelBorrowRequest = async (request) => {
+    try {
+      setRequestActionState({ id: request.id, type: 'cancel' });
+      await cancelBorrowRequest(request.rawId);
+      setBorrowRequests((prev) => prev.filter((entry) => entry.rawId !== request.rawId));
+    } finally {
+      setRequestActionState({ id: null, type: null });
+    }
+  };
+
   const handleAcceptIncomingRequest = (request) => {
     setAcceptingRequest(request);
   };
@@ -397,7 +408,17 @@ function App() {
                   />
                 }
               />
-              <Route path="/requests" element={<RequestsPage requests={borrowRequests} currentUser={currentUser} />} />
+              <Route
+                path="/requests"
+                element={
+                  <RequestsPage
+                    requests={borrowRequests}
+                    currentUser={currentUser}
+                    onCancelRequest={handleCancelBorrowRequest}
+                    activeRequestId={requestActionState.type === 'cancel' ? requestActionState.id : null}
+                  />
+                }
+              />
               <Route
                 path="/incoming-requests"
                 element={

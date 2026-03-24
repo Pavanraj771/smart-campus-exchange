@@ -46,6 +46,24 @@ class BorrowRequestViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(requester=self.request.user)
 
+    def destroy(self, request, *args, **kwargs):
+        borrow_request = self.get_object()
+
+        if borrow_request.requester_id != request.user.id:
+            return Response(
+                {"detail": "You can only cancel your own borrow requests."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if borrow_request.status != "pending":
+            return Response(
+                {"detail": "Only pending requests can be cancelled."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        borrow_request.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=False, methods=["get"], url_path="incoming")
     def incoming(self, request):
         incoming_requests = self.queryset.filter(resource__owner=request.user)
